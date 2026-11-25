@@ -4,8 +4,8 @@ import { api } from '../api';
 import { useTheme } from '../theme/ThemeContext';
 import {
   AttributionFooter,
+  BackButton,
   PosterImage,
-  PrimaryButton,
   Screen,
   Skeleton,
   StatePanel,
@@ -38,7 +38,9 @@ export default function MovieDetailsScreen({ token, movieId, initialMovie, onBac
   return (
     <Screen direction="back">
       <ScrollView contentContainerStyle={styles.content}>
-        <PrimaryButton accessibilityLabel="Back to discovery" label="Back to discovery" onPress={onBack} variant="secondary" />
+        <View style={styles.header}>
+          <BackButton accessibilityLabel="Back to discovery" onPress={onBack} />
+        </View>
 
         {status === 'loading' && (
           <View style={styles.loading}>
@@ -128,9 +130,13 @@ function useStyles(theme) {
       StyleSheet.create({
         content: {
           flexGrow: 1,
-          padding: theme.spacing.large,
           paddingBottom: theme.spacing.extraLarge,
+          paddingHorizontal: theme.spacing.base,
+          paddingTop: theme.spacing.large,
           rowGap: theme.spacing.large,
+        },
+        header: {
+          alignItems: 'flex-start',
         },
         loading: {
           rowGap: theme.spacing.medium,
@@ -139,7 +145,7 @@ function useStyles(theme) {
           rowGap: theme.spacing.medium,
         },
         backdrop: {
-          width: theme.metrics.fullWidth,
+          alignSelf: 'stretch',
           borderRadius: theme.spacing.medium,
         },
         posterRow: {

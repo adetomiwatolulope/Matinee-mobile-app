@@ -22,9 +22,14 @@ export default function PaymentScreen({ onBack }) {
   const styles = useStyles(theme);
 
   return (
-    <Screen>
+    <Screen direction="back">
       <ScrollView contentContainerStyle={styles.content}>
-        <BrandHeader title="Checkout & payments" subtitle="Server-authorised payment flow" />
+        <BrandHeader
+          backAccessibilityLabel="Back to dashboard"
+          onBack={onBack}
+          subtitle="Server-authorised payment flow"
+          title="Checkout & payments"
+        />
 
         <Message
           type="info"
@@ -71,8 +76,6 @@ export default function PaymentScreen({ onBack }) {
             text="Status values will come from the server. This screen does not decide whether a payment succeeded."
           />
         </Card>
-
-        <Button label="Back to dashboard" onPress={onBack} variant="secondary" fullWidth />
       </ScrollView>
     </Screen>
   );
@@ -112,8 +115,9 @@ function useStyles(theme) {
       StyleSheet.create({
         content: {
           flexGrow: 1,
-          padding: theme.spacing.large,
           paddingBottom: theme.spacing.extraLarge,
+          paddingHorizontal: theme.spacing.base,
+          paddingTop: theme.spacing.large,
           rowGap: theme.spacing.large,
         },
         card: {

@@ -70,7 +70,8 @@ function useStyles(theme) {
         content: {
           flex: 1,
           justifyContent: 'center',
-          padding: theme.spacing.large,
+          paddingHorizontal: theme.spacing.base,
+          paddingVertical: theme.spacing.large,
           rowGap: theme.spacing.large,
         },
         hero: {

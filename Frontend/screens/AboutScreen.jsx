@@ -13,7 +13,12 @@ export default function AboutScreen({ onBack }) {
   return (
     <Screen direction="back">
       <View style={styles.content}>
-        <BrandHeader title="About & credits" subtitle="Sources and notices for the film catalog." />
+        <BrandHeader
+          backAccessibilityLabel="Back to dashboard"
+          onBack={onBack}
+          subtitle="Sources and notices for the film catalog."
+          title="About & credits"
+        />
         <Card style={styles.card}>
           <Text style={[theme.typography.titleLarge, { color: theme.colors.onSurface }]}>Film data</Text>
           <Text style={[theme.typography.bodyMedium, { color: theme.colors.onSurfaceVariant }]}>
@@ -36,7 +41,6 @@ export default function AboutScreen({ onBack }) {
             variant="secondary"
           />
         </Card>
-        <PrimaryButton label="Back" onPress={onBack} />
       </View>
     </Screen>
   );
@@ -48,7 +52,8 @@ function useStyles(theme) {
       StyleSheet.create({
         content: {
           flexGrow: 1,
-          padding: theme.spacing.large,
+          paddingHorizontal: theme.spacing.base,
+          paddingVertical: theme.spacing.large,
           rowGap: theme.spacing.large,
         },
         card: {

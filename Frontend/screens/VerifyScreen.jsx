@@ -106,8 +106,9 @@ function useStyles(theme) {
         content: {
           flexGrow: 1,
           justifyContent: 'center',
-          padding: theme.spacing.large,
           paddingBottom: theme.spacing.extraLarge,
+          paddingHorizontal: theme.spacing.base,
+          paddingTop: theme.spacing.large,
           rowGap: theme.spacing.medium,
         },
         codeRow: {

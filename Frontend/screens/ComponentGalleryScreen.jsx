@@ -64,9 +64,12 @@ export default function ComponentGalleryScreen({ onBack }) {
   return (
     <Screen direction="back" contentStyle={styles.screenContent}>
       <ScrollView contentContainerStyle={styles.content}>
-        <BrandHeader title="Component Gallery" subtitle="Hidden Requirement 3 style guide" />
-
-        <Button label="Back to dashboard" onPress={onBack} variant="secondary" />
+        <BrandHeader
+          backAccessibilityLabel="Back to dashboard"
+          onBack={onBack}
+          subtitle="Hidden Requirement 3 style guide"
+          title="Component Gallery"
+        />
 
         <GallerySection title="Text">
           {Object.keys(theme.typography).map((variant) => (
@@ -203,7 +206,8 @@ function useStyles(theme) {
           flex: 1,
         },
         content: {
-          padding: theme.spacing.large,
+          paddingHorizontal: theme.spacing.base,
+          paddingVertical: theme.spacing.large,
           rowGap: theme.spacing.large,
         },
         section: {
