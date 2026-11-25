@@ -1,0 +1,96 @@
+import { colors as tokens, spacing, typography, effects } from '../designTokens';
+
+const metrics = {
+  borderWidth: 1,
+  hairline: 1,
+  touchTarget: spacing.veryLarge,
+  icon: spacing.smallLarge,
+  smallIcon: spacing.medium,
+  posterAspectRatio: '2 / 3',
+  backdropAspectRatio: '16 / 9',
+  codeLetterSpacing: spacing.extraSmall,
+  listInitialBatch: 8,
+  listBatch: 8,
+  listWindow: 5,
+  widePhoneBreakpoint: spacing.veryLarge * 9,
+  searchMinLength: 2,
+  codeLength: 6,
+  singleCharacter: 1,
+  fullWidth: '100%',
+  featuredOverviewLines: 3,
+  shimmerWidth: '50%',
+  shimmerStartOffset: -100,
+  shimmerScale: 100,
+};
+
+const motion = {
+  instant: 0,
+  fast: 180,
+  normal: 260,
+  slow: 360,
+  image: 240,
+  debounce: 320,
+  shimmer: 900,
+};
+
+const light = {
+  ...tokens,
+  background: tokens.surface,
+  onBackground: tokens.onSurface,
+  outline: tokens.neutralVariant,
+  outlineVariant: tokens.surfaceVariant,
+  disabled: tokens.neutralContainer,
+  onDisabled: tokens.onNeutralContainer,
+  skeleton: tokens.surfaceContainer,
+  skeletonHighlight: tokens.surfaceContainerHigh,
+};
+
+const dark = {
+  ...tokens,
+  background: tokens.inverseSurface,
+  onBackground: tokens.inverseOnSurface,
+  surface: tokens.inverseSurface,
+  onSurface: tokens.inverseOnSurface,
+  surfaceVariant: tokens.onSurfaceVariant,
+  onSurfaceVariant: tokens.surfaceContainerHighest,
+  surfaceContainerHighest: tokens.inverseOnSurface,
+  surfaceContainerHigh: tokens.onSurface,
+  surfaceContainer: tokens.onSurfaceVariant,
+  surfaceContainerLow: tokens.inverseSurface,
+  surfaceContainerLowest: tokens.onSurfaceVariant,
+  primaryContainer: tokens.secondary,
+  onPrimaryContainer: tokens.onSecondary,
+  secondaryContainer: tokens.onSurfaceVariant,
+  onSecondaryContainer: tokens.inverseOnSurface,
+  tertiaryContainer: tokens.onSurfaceVariant,
+  onTertiaryContainer: tokens.inverseOnSurface,
+  neutralContainer: tokens.onSurfaceVariant,
+  onNeutralContainer: tokens.inverseOnSurface,
+  neutralVariantContainer: tokens.onSurfaceVariant,
+  onNeutralVariantContainer: tokens.inverseOnSurface,
+  errorContainer: tokens.error,
+  onErrorContainer: tokens.onError,
+  infoContainer: tokens.onSurfaceVariant,
+  onInfoContainer: tokens.inverseOnSurface,
+  warningContainer: tokens.onSurfaceVariant,
+  onWarningContainer: tokens.inverseOnSurface,
+  successContainer: tokens.onSurfaceVariant,
+  onSuccessContainer: tokens.inverseOnSurface,
+  outline: tokens.surfaceContainerHighest,
+  outlineVariant: tokens.onSurfaceVariant,
+  disabled: tokens.onSurfaceVariant,
+  onDisabled: tokens.surfaceContainerHighest,
+  skeleton: tokens.onSurfaceVariant,
+  skeletonHighlight: tokens.onSurface,
+};
+
+export function createTheme(colorScheme) {
+  return {
+    colors: colorScheme === 'dark' ? dark : light,
+    spacing,
+    typography,
+    effects,
+    metrics,
+    motion,
+  };
+}

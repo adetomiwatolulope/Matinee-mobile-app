@@ -1,13 +1,12 @@
-﻿-- CreateTable
+-- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
-    "emailVerificationCodeHash" TEXT,
+    "emailVerificationTokenHash" TEXT,
     "emailVerificationExpiresAt" TIMESTAMP(3),
-    "emailVerificationAttempts" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

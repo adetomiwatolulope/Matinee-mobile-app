@@ -11,27 +11,49 @@ datasource db {
 }
 
 model User {
-  id                       String    @id @default(cuid())
-  name                     String
-  email                    String    @unique
-  passwordHash             String
-  emailVerified            Boolean   @default(false)
-  emailVerificationCodeHash String?
-  emailVerificationExpiresAt DateTime?
-  emailVerificationAttempts Int      @default(0)
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
+  id                             String    @id @default(cuid())
+  name                           String
+  email                          String    @unique
+  passwordHash                   String
+  emailVerified                  Boolean   @default(false)
+  emailVerificationCodeHash      String?   @unique
+  emailVerificationExpiresAt     DateTime?
+  emailVerificationFailedAttempts Int      @default(0)
+  emailVerificationJobId         String?
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
 }
 
 model EmailJob {
-  id          String   @id @default(cuid())
-  type        String
-  status      String   @default("pending") // pending, processing, completed, failed
-  payload     Json
-  attempts    Int      @default(0)
-  maxAttempts Int      @default(5)
-  lastError   String?
-  runAt       DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String    @id @default(cuid())
+  type           String
+  status         String    @default("pending")
+  reference      String?
+  payload        Json
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  lastError      String?
+  runAt          DateTime  @default(now())
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([status, leaseExpiresAt])
+}
+
+model RegistrationIdempotency {
+  key            String    @id
+  requestHash    String
+  status         String    @default("pending")
+  responseStatus Int?
+  responseJson   Json?
+  userId         String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  completedAt    DateTime?
+  expiresAt      DateTime
+
+  @@index([status, expiresAt])
 }

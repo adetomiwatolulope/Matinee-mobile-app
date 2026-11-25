@@ -1,24 +1,34 @@
 {
   "expo": {
-    "name": "Mantinee",
-    "slug": "mantinee",
+    "name": "Matinee",
+    "slug": "Matinee",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "description": "Discover films, select cinemas and showtimes, and manage your Matinee account.",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#012624",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.svg",
+      "name": "Matinee",
+      "shortName": "Matinee",
+      "lang": "en",
+      "themeColor": "#012624",
+      "backgroundColor": "#fafafa",
+      "description": "Discover films, select cinemas and showtimes, and manage your Matinee account."
+    },
+    "plugins": [
+      "expo-image"
+    ]
   }
 }

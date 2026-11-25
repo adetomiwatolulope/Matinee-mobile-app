@@ -1,13 +1,18 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('./database/generated/prisma');
-const { hashCode, generateSixDigitCode, enqueueVerificationEmailJob, startEmailJobWorker } = require('./emailJobs');
+const { z } = require('zod');
+const { assertStartupConfig, getTmdbConfig, getTokenSecret } = require('./config');
+const { disconnectPrisma, prisma } = require('./prismaClient');
+const { enqueueVerificationEmailJob, kickEmailWorker, startEmailJobWorker } = require('./emailJobs');
+const { registerCustomer } = require('./registrationService');
+const { clearVerificationState, verifyEmailCode } = require('./verificationService');
+const { createTmdbCatalogService } = require('./tmdbCatalogService');
+const { TmdbAdapterError } = require('./tmdbAdapter');
+const { createMovieRateLimiter } = require('./movieRateLimiter');
 
 const app = express();
-const prisma = new PrismaClient();
 
 app.use(cors());
 app.use(express.json());
@@ -17,8 +22,7 @@ app.get('/health', (_req, res) => {
 });
 
 function signToken(user) {
-  const secret = process.env.TOKEN_SECRET || 'dev-secret-change-me';
-  return jwt.sign({ sub: user.id, email: user.email }, secret, { expiresIn: '1h' });
+  return jwt.sign({ sub: user.id, email: user.email }, getTokenSecret(), { expiresIn: '1h' });
 }
 
 function authMiddleware(req, res, next) {
@@ -26,126 +30,172 @@ function authMiddleware(req, res, next) {
   const [, token] = header.split(' ');
   if (!token) return res.status(401).json({ error: 'Missing token' });
   try {
-    const secret = process.env.TOKEN_SECRET || 'dev-secret-change-me';
-    req.user = jwt.verify(token, secret);
+    req.user = jwt.verify(token, getTokenSecret());
     next();
   } catch (_e) {
     return res.status(401).json({ error: 'Invalid token' });
   }
 }
 
+const registerSchema = z.object({
+  name: z.string({ required_error: 'name is required' }).trim().min(1, 'name is required').regex(/^[A-Za-z ]+$/, 'Name must use only letters'),
+  email: z.string({ required_error: 'email is required' }).trim().toLowerCase().email('Enter a valid email address'),
+  password: z.string({ required_error: 'password is required' })
+    .min(10, 'password must be 10-64 characters')
+    .max(64, 'password must be 10-64 characters')
+    .regex(/[a-z]/, 'password must contain a lowercase letter')
+    .regex(/[A-Z]/, 'password must contain an uppercase letter')
+    .regex(/[0-9]/, 'password must contain a number')
+    .regex(/[#@>^]/, 'password must contain a special character (#@>^)'),
+});
+
+const idempotencyKeySchema = z.string().uuid('Idempotency-Key must be a valid UUID');
+
+const loginSchema = z.object({
+  email: z.string({ required_error: 'email is required' }).trim().toLowerCase().email('Enter a valid email address'),
+  password: z.string({ required_error: 'password is required' })
+    .min(10, 'password must be 10-64 characters')
+    .max(64, 'password must be 10-64 characters')
+    .regex(/[a-z]/, 'password must contain a lowercase letter')
+    .regex(/[A-Z]/, 'password must contain an uppercase letter')
+    .regex(/[0-9]/, 'password must contain a number')
+    .regex(/[#@>^]/, 'password must contain a special character (#@>^)'),
+});
+
+const emailSchema = z.object({
+  email: z.string({ required_error: 'email is required' }).trim().toLowerCase().email('Enter a valid email address'),
+});
+
+const verifyCodeSchema = z.object({
+  email: z.string({ required_error: 'email is required' }).trim().toLowerCase().email('Enter a valid email address'),
+  code: z.string({ required_error: 'code is required' }).trim().regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
+});
+
+function parseWith(schema, input, res) {
+  const result = schema.safeParse(input ?? {});
+  if (!result.success) {
+    const first = result.error.issues[0];
+    return { ok: false, response: res.status(400).json({ error: first ? first.message : 'Invalid request', details: result.error.issues }) };
+  }
+  return { ok: true, data: result.data };
+}
+
+function parseBody(schema, req, res) {
+  return parseWith(schema, req.body, res);
+}
+
+const moviePageSchema = z.object({
+  page: z.string().trim().regex(/^\d+$/, 'page must be a positive integer').transform(Number).refine((value) => value >= 1 && value <= 500, 'page must be between 1 and 500').optional(),
+});
+
+const movieSearchSchema = moviePageSchema.extend({
+  q: z.string({ required_error: 'q is required' }).trim().min(1, 'q is required').max(100, 'q must be at most 100 characters'),
+});
+
+const movieIdSchema = z.object({
+  id: z.string({ required_error: 'id is required' }).regex(/^\d+$/, 'id must be a TMDB numeric id'),
+});
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    emailVerified: user.emailVerified,
+    createdAt: user.createdAt,
+  };
+}
+
 app.post('/auth/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body || {};
-    if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
-    if (String(password).length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
-    const normalizedEmail = String(email).toLowerCase().trim();
-
-    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (existing && existing.emailVerified) {
-      return res.status(409).json({ error: 'email already registered' });
+    const idempotencyKey = idempotencyKeySchema.safeParse(req.headers['idempotency-key']);
+    if (!idempotencyKey.success) {
+      return res.status(400).json({ error: 'Idempotency-Key must be a valid UUID' });
     }
 
-    const passwordHash = await bcrypt.hash(String(password), 10);
-    let user;
-    if (existing && !existing.emailVerified) {
-      user = await prisma.user.update({
-        where: { id: existing.id },
-        data: { name: String(name), passwordHash, emailVerificationAttempts: 0 },
-        select: { id: true, name: true, email: true, emailVerified: true, createdAt: true },
-      });
-    } else {
-      user = await prisma.user.create({
-        data: { name: String(name), email: normalizedEmail, passwordHash },
-        select: { id: true, name: true, email: true, emailVerified: true, createdAt: true },
-      });
-    }
+    const parsed = parseBody(registerSchema, req, res);
+    if (!parsed.ok) return parsed.response;
 
-    await enqueueVerificationEmailJob(prisma, user.id);
-    res.status(201).json({ message: 'Verification code sent to email', user, requiresVerification: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'internal error' });
+    const result = await registerCustomer(prisma, {
+      idempotencyKey: idempotencyKey.data,
+      ...parsed.data,
+    });
+    if (result.status >= 200 && result.status < 300) kickEmailWorker(prisma);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('Registration error', error && error.message ? error.message : error);
+    return res.status(500).json({ error: 'internal error' });
   }
 });
 
-app.post('/auth/verify-email', async (req, res) => {
+app.post('/auth/verify-code', async (req, res) => {
   try {
-    const { email, code } = req.body || {};
-    if (!email || !code) return res.status(400).json({ error: 'email and code required' });
-    const normalizedEmail = String(email).toLowerCase().trim();
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (!user) return res.status(404).json({ error: 'user not found' });
-    if (user.emailVerified) {
-      const token = signToken(user);
-      return res.json({ token, user: { id: user.id, name: user.name, email: user.email, emailVerified: true } });
+    const parsed = parseBody(verifyCodeSchema, req, res);
+    if (!parsed.ok) return parsed.response;
+
+    const result = await verifyEmailCode(prisma, parsed.data);
+    if (!result.ok) {
+      if (result.reason === 'already_verified') {
+        return res.status(409).json({ error: 'Email already verified. Please log in.' });
+      }
+      if (result.reason === 'expired') {
+        return res.status(400).json({ error: 'Verification code expired. Request a new code.', requiresResend: true });
+      }
+      if (result.reason === 'locked') {
+        return res.status(400).json({ error: 'Too many incorrect attempts. Request a new code.', requiresResend: true });
+      }
+      return res.status(400).json({
+        error: 'Invalid or expired verification code',
+        requiresResend: !!result.requiresResend,
+        ...(result.remainingAttempts === undefined ? {} : { remainingAttempts: result.remainingAttempts }),
+      });
     }
 
-    const maxAttempts = Number(process.env.VERIFICATION_MAX_ATTEMPTS || 6);
-    if (user.emailVerificationAttempts >= maxAttempts) {
-      return res.status(429).json({ error: 'Too many attempts. Please resend a new code.' });
-    }
-    if (!user.emailVerificationExpiresAt || new Date() > user.emailVerificationExpiresAt) {
-      return res.status(400).json({ error: 'Verification code expired. Please resend a new code.' });
-    }
-
-    const providedHash = hashCode(code);
-    if (providedHash !== user.emailVerificationCodeHash) {
-      await prisma.user.update({ where: { id: user.id }, data: { emailVerificationAttempts: { increment: 1 } } });
-      return res.status(400).json({ error: 'Invalid verification code' });
-    }
-
-    const verified = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailVerified: true,
-        emailVerificationCodeHash: null,
-        emailVerificationExpiresAt: null,
-        emailVerificationAttempts: 0,
-      },
-      select: { id: true, name: true, email: true, emailVerified: true, createdAt: true },
-    });
-    const token = signToken(verified);
-    res.json({ token, user: verified });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'internal error' });
+    return res.json({ token: signToken(result.user), user: result.user });
+  } catch (error) {
+    console.error('Verification error', error && error.message ? error.message : error);
+    return res.status(500).json({ error: 'internal error' });
   }
 });
 
 app.post('/auth/resend-verification', async (req, res) => {
   try {
-    const { email } = req.body || {};
-    if (!email) return res.status(400).json({ error: 'email required' });
-    const normalizedEmail = String(email).toLowerCase().trim();
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (!user) return res.status(404).json({ error: 'user not found' });
-    if (user.emailVerified) return res.status(400).json({ error: 'email already verified' });
-    await enqueueVerificationEmailJob(prisma, user.id);
-    res.json({ message: 'Verification code resent' });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'internal error' });
+    const parsed = parseBody(emailSchema, req, res);
+    if (!parsed.ok) return parsed.response;
+    const { email } = parsed.data;
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user && !user.emailVerified) {
+      await prisma.$transaction(async (tx) => {
+        await clearVerificationState(tx, user.id);
+        await enqueueVerificationEmailJob(tx, user.id);
+      });
+      kickEmailWorker(prisma);
+    }
+    return res.json({ message: 'If the account is unverified, a new code will be sent to the email' });
+  } catch (error) {
+    console.error('Resend verification error', error && error.message ? error.message : error);
+    return res.status(500).json({ error: 'internal error' });
   }
 });
 
 app.post('/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'email, password required' });
-    const normalizedEmail = String(email).toLowerCase().trim();
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const parsed = parseBody(loginSchema, req, res);
+    if (!parsed.ok) return parsed.response;
+    const { email, password } = parsed.data;
+
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ error: 'invalid credentials' });
-    const ok = await bcrypt.compare(String(password), user.passwordHash);
+    const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'invalid credentials' });
     if (!user.emailVerified) {
       return res.status(403).json({ error: 'Email not verified', requiresVerification: true, email: user.email });
     }
-    const token = signToken(user);
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, emailVerified: user.emailVerified, createdAt: user.createdAt } });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'internal error' });
+    return res.json({ token: signToken(user), user: publicUser(user) });
+  } catch (error) {
+    console.error('Login error', error && error.message ? error.message : error);
+    return res.status(500).json({ error: 'internal error' });
   }
 });
 
@@ -157,18 +207,92 @@ app.get('/me', authMiddleware, async (req, res) => {
     });
     if (!user) return res.status(404).json({ error: 'not found' });
     if (!user.emailVerified) return res.status(403).json({ error: 'Email not verified', requiresVerification: true });
-    res.json({ user });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'internal error' });
+    return res.json({ user });
+  } catch (error) {
+    console.error('Session lookup error', error && error.message ? error.message : error);
+    return res.status(500).json({ error: 'internal error' });
   }
 });
+
+let movieCatalogService = null;
+const movieRateLimiter = createMovieRateLimiter();
+
+function catalogService() {
+  if (!getTmdbConfig().enabled) return null;
+  if (!movieCatalogService) movieCatalogService = createTmdbCatalogService();
+  return movieCatalogService;
+}
+
+function applyMovieRateLimit(req, res) {
+  return new Promise((resolve) => movieRateLimiter(req, res, resolve));
+}
+
+function sendMovieResult(res, service, result) {
+  res.set('X-Matinee-Cache-Source', result.meta.source);
+  res.set('X-Matinee-Cache-Age-Seconds', String(result.meta.ageSeconds));
+  return res.json({ ...result.data, attribution: service.attribution(), meta: result.meta });
+}
+
+function handleMovieError(res, error) {
+  if (error instanceof TmdbAdapterError && error.status === 429 && error.retryAfterMs !== null) {
+    res.set('Retry-After', String(Math.max(1, Math.ceil(error.retryAfterMs / 1000))));
+  }
+  console.error('Movie catalog error', error && error.message ? error.message : error);
+  return res.status(503).json({ error: 'Movie catalog temporarily unavailable' });
+}
+
+async function handleMovieRequest(req, res, { schema, input, call }) {
+  const parsed = parseWith(schema, input, res);
+  if (!parsed.ok) return parsed.response;
+
+  const service = catalogService();
+  if (!service) return res.status(503).json({ error: 'Movie catalog is not enabled' });
+
+  await applyMovieRateLimit(req, res);
+  if (res.headersSent) return undefined;
+
+  try {
+    const result = await call(service, parsed.data);
+    return sendMovieResult(res, service, result);
+  } catch (error) {
+    return handleMovieError(res, error);
+  }
+}
+
+app.get('/movies/now-playing', authMiddleware, (req, res) => handleMovieRequest(req, res, {
+  schema: moviePageSchema,
+  input: req.query,
+  call: (service, data) => service.getNowPlaying({ page: data.page ?? 1 }),
+}));
+
+app.get('/movies/search', authMiddleware, (req, res) => handleMovieRequest(req, res, {
+  schema: movieSearchSchema,
+  input: req.query,
+  call: (service, data) => service.searchMovies({ query: data.q, page: data.page ?? 1 }),
+}));
+
+app.get('/movies/:id', authMiddleware, (req, res) => handleMovieRequest(req, res, {
+  schema: movieIdSchema,
+  input: req.params,
+  call: (service, data) => service.getMovieDetails(data.id),
+}));
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 const host = process.env.HOST || '0.0.0.0';
 
+assertStartupConfig();
 startEmailJobWorker(prisma);
 
-app.listen(port, host, () => {
+const server = app.listen(port, host, () => {
   console.log(`Server listening on http://${host}:${port}`);
 });
+
+async function shutdown() {
+  server.close(async () => {
+    await disconnectPrisma();
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
