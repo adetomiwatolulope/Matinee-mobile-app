@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "description": "Discover films, select cinemas and showtimes, and manage your Matinee account.",
     "ios": {
       "supportsTablet": true
@@ -28,7 +28,8 @@
       "description": "Discover films, select cinemas and showtimes, and manage your Matinee account."
     },
     "plugins": [
-      "expo-image"
+      "expo-image",
+      "expo-dev-client"
     ]
   }
 }

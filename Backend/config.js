@@ -91,6 +91,25 @@ function getMovieRateLimitConfig() {
   };
 }
 
+function getDatabasePoolConfig() {
+  return {
+    max: getNumberEnv('DATABASE_POOL_MAX', 10),
+    idleTimeoutMillis: getNumberEnv('DATABASE_POOL_IDLE_TIMEOUT_MS', 10000, 0),
+    connectionTimeoutMillis: getNumberEnv('DATABASE_POOL_CONNECTION_TIMEOUT_MS', 5000, 0),
+    readUrl: process.env.DATABASE_READ_URL || null,
+    primaryReadTtlSeconds: getNumberEnv('PRIMARY_READ_PIN_SECONDS', 30),
+  };
+}
+
+function getSystemJobConfig() {
+  return {
+    pollMs: getNumberEnv('SYSTEM_JOB_POLL_MS', 5000),
+    leaseMs: getNumberEnv('SYSTEM_JOB_LEASE_MS', 60000),
+    maxAttempts: getNumberEnv('SYSTEM_JOB_MAX_ATTEMPTS', 5),
+    batchSize: getNumberEnv('SYSTEM_JOB_BATCH_SIZE', 10),
+  };
+}
+
 function useLocalMovieStore() {
   return getBooleanEnv('MOVIE_LOCAL_MEMORY_STORE', false);
 }
@@ -103,17 +122,21 @@ function assertStartupConfig() {
   getTmdbConfig();
   getRedisConfig();
   getMovieRateLimitConfig();
+  getDatabasePoolConfig();
+  getSystemJobConfig();
   useLocalMovieStore();
 }
 
 module.exports = {
   assertStartupConfig,
   getBooleanEnv,
+  getDatabasePoolConfig,
   getEmailJobConfig,
   getMovieRateLimitConfig,
   getNumberEnv,
   getRedisConfig,
   getRequiredEnv,
+  getSystemJobConfig,
   getTokenSecret,
   getTmdbConfig,
   getVerificationCodeSecret,

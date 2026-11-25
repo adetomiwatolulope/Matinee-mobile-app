@@ -16,12 +16,18 @@ import {
   validateAuthInput,
   validateField,
 } from './domain/auth';
+import AboutScreen from './screens/AboutScreen';
 import AuthScreen from './screens/AuthScreen';
+import ComponentGalleryScreen from './screens/ComponentGalleryScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import DiscoveryScreen from './screens/DiscoveryScreen';
 import MovieDetailsScreen from './screens/MovieDetailsScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
+import PaymentScreen from './screens/PaymentScreen';
 import VerifyScreen from './screens/VerifyScreen';
+import { installAppErrorTracking } from './errorTracking';
+
+installAppErrorTracking();
 
 const EMPTY_FIELD_STATE = { name: '', email: '', password: '' };
 const EMPTY_SUCCESS_STATE = { name: false, email: false, password: false };
@@ -58,6 +64,7 @@ export default function App() {
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [selectedMovieId, setSelectedMovieId] = useState(null);
+  const [selectedMovie, setSelectedMovie] = useState(null);
   const registrationAttemptRef = useRef(null);
 
   useEffect(() => {
@@ -222,6 +229,7 @@ export default function App() {
           requestError.message || 'Enter the 6-digit code sent to your email.',
         );
       } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         setError(requestError.message);
       }
     } finally {
@@ -254,8 +262,10 @@ export default function App() {
         setVerificationCode('');
         setInfo(requestError.data.error);
         setError('');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       } else {
         setError(requestError.message);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }
     } finally {
       setBusy(false);
@@ -274,6 +284,7 @@ export default function App() {
       setVerificationCode('');
     } catch (requestError) {
       setError(requestError.message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     } finally {
       setBusy(false);
     }
@@ -284,6 +295,7 @@ export default function App() {
     setToken(null);
     setUser(null);
     setSelectedMovieId(null);
+    setSelectedMovie(null);
     backToLogin();
   }
 
@@ -292,8 +304,10 @@ export default function App() {
     if (last) {
       setStage('verify');
       setInfo('Enter the 6-digit code sent to your email.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
       setOnboardingStep((step) => step + 1);
+      Haptics.selectionAsync();
     }
   }
 
@@ -302,13 +316,15 @@ export default function App() {
     setStage('discovery');
   }
 
-  function openMovie(movieId) {
+  function openMovie(movieId, initialMovie) {
     setSelectedMovieId(movieId);
+    setSelectedMovie(initialMovie || null);
     setStage('movie-details');
   }
 
   function backToDiscovery() {
     setSelectedMovieId(null);
+    setSelectedMovie(null);
     setStage('discovery');
   }
 
@@ -321,16 +337,42 @@ export default function App() {
     );
   }
 
+  if (stage === 'about') {
+    return <AboutScreen onBack={() => setStage('dashboard')} />;
+  }
+
+  if (stage === 'componentGallery') {
+    return <ComponentGalleryScreen onBack={() => setStage('dashboard')} />;
+  }
+
   if (stage === 'dashboard' && token && user) {
-    return <DashboardScreen user={user} onOpenDiscovery={openDiscovery} onLogout={logout} />;
+    return (
+      <DashboardScreen
+        user={user}
+        onOpenDiscovery={openDiscovery}
+        onOpenPayments={() => setStage('payments')}
+        onOpenAbout={() => setStage('about')}
+        onOpenGallery={() => setStage('componentGallery')}
+        onLogout={logout}
+      />
+    );
   }
 
   if (stage === 'discovery' && token) {
-    return <DiscoveryScreen token={token} onOpenMovie={openMovie} />;
+    return <DiscoveryScreen onBack={() => setStage('dashboard')} token={token} onOpenMovie={openMovie} />;
   }
 
   if (stage === 'movie-details' && token && selectedMovieId !== null) {
-    return <MovieDetailsScreen token={token} movieId={selectedMovieId} onBack={backToDiscovery} />;
+    return       <MovieDetailsScreen
+        initialMovie={selectedMovie}
+        movieId={selectedMovieId}
+        onBack={backToDiscovery}
+        token={token}
+      />;
+  }
+
+  if (stage === 'payments' && token && user) {
+    return <PaymentScreen onBack={() => setStage('dashboard')} />;
   }
 
   if (stage === 'onboarding') {

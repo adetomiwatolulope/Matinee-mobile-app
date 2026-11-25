@@ -23,8 +23,9 @@ export default function MovieDetailsScreen({ token, movieId, initialMovie, onBac
       const data = await api(`/movies/${encodeURIComponent(movieId)}`, { token });
       setMovie(data);
       setStatus('success');
-    } catch (_error) {
-      setStatus('error');
+    } catch (error) {
+      if (error?.status === 429 || error?.status === 503) setStatus('overloaded');
+      else setStatus('error');
     }
   }, [movieId, token]);
 
@@ -47,6 +48,15 @@ export default function MovieDetailsScreen({ token, movieId, initialMovie, onBac
           </View>
         )}
 
+        {status === 'overloaded' && (
+          <StatePanel
+            actionLabel="Try again"
+            message="Matinee is busy right now. Please wait a moment and try again."
+            onAction={loadDetails}
+            title="Too many people are browsing"
+          />
+        )}
+
         {status === 'error' && (
           <StatePanel
             actionLabel="Try again"
@@ -65,7 +75,12 @@ export default function MovieDetailsScreen({ token, movieId, initialMovie, onBac
               uri={movie.backdropUrl || movie.posterUrl}
             />
             <View style={styles.posterRow}>
-              <PosterImage style={styles.poster} title={movie.title} uri={movie.posterUrl} />
+              <PosterImage
+                sharedTransitionTag={`movie-poster-${movieId}`}
+                style={styles.poster}
+                title={movie.title}
+                uri={movie.posterUrl}
+              />
               <View style={styles.posterCopy}>
                 <Text accessibilityRole="header" style={[theme.typography.headlineSmall, { color: theme.colors.onSurface }]}>
                   {movie.title}
@@ -79,7 +94,7 @@ export default function MovieDetailsScreen({ token, movieId, initialMovie, onBac
                   {movie.releaseDate ? movie.releaseDate.slice(0, 4) : 'Release date unavailable'}
                 </Text>
                 {typeof movie.voteAverage === 'number' && (
-                  <Text style={[theme.typography.labelMedium, { color: theme.colors.primary }]}>
+                  <Text style={[theme.typography.labelMedium, { color: theme.colors.onSurfaceVariant }]}>
                     Rating {movie.voteAverage.toFixed(1)}
                   </Text>
                 )}

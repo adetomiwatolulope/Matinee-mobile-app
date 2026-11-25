@@ -53,7 +53,8 @@ test('allows requests up to the shared limit', async () => {
   assert.equal(nextCalls, 2);
   assert.equal(first.headersSent, false);
   assert.equal(second.headersSent, false);
-  assert.equal(cache.values.get('matinee:ratelimit:movies:user-1:window'), 60);
+  assert.equal(cache.values.get('matinee:ratelimit:movies:user:user-1:window'), 60);
+  assert.equal(cache.values.get('matinee:ratelimit:movies:ip:127.0.0.1:window'), 60);
 });
 
 test('returns 429 above the shared limit', async () => {
@@ -69,4 +70,19 @@ test('returns 429 above the shared limit', async () => {
   assert.equal(nextCalls, 0);
   assert.equal(blocked.statusCode, 429);
   assert.equal(blocked.headers['Retry-After'], '60');
+});
+
+test('shares an IP limit across authenticated users', async () => {
+  const cache = fakeCounterCache();
+  const limiter = createMovieRateLimiter({ cache, config: { maxRequests: 2, windowSeconds: 60 } });
+
+  await limiter({ user: { sub: 'user-3' }, ip: '203.0.113.9' }, fakeResponse(), () => {});
+  await limiter({ user: { sub: 'user-4' }, ip: '203.0.113.9' }, fakeResponse(), () => {});
+
+  const blocked = fakeResponse();
+  let nextCalls = 0;
+  await limiter({ user: { sub: 'user-4' }, ip: '203.0.113.9' }, blocked, () => { nextCalls += 1; });
+
+  assert.equal(nextCalls, 0);
+  assert.equal(blocked.statusCode, 429);
 });

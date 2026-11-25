@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image as CachedImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { BrandHeader, FormField, Message, PrimaryButton, Screen, TextButton } from '../components/ui';
@@ -79,6 +80,8 @@ export default function AuthScreen({
             <FormField label="Name" error={fieldErrors.name}>
               <TextInput
                 accessibilityLabel="Name"
+                accessibilityHint={fieldErrors.name || 'Enter your full name'}
+                accessibilityState={{ invalid: !!fieldErrors.name }}
                 autoComplete="name"
                 onBlur={() => onBlurField('name', 'Name', name)}
                 onChangeText={onNameChange}
@@ -92,9 +95,11 @@ export default function AuthScreen({
           )}
 
           <FormField label="Email" error={fieldErrors.email}>
-            <TextInput
-              accessibilityLabel="Email"
-              autoCapitalize="none"
+              <TextInput
+                accessibilityLabel="Email"
+                accessibilityHint={fieldErrors.email || 'Enter your email address'}
+                accessibilityState={{ invalid: !!fieldErrors.email }}
+                autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
               onBlur={() => onBlurField('email', 'Email', email)}
@@ -111,7 +116,8 @@ export default function AuthScreen({
             <View style={[inputStyle('password'), styles.passwordContainer]}>
               <TextInput
                 accessibilityLabel="Password"
-                accessibilityHint="Use at least 10 characters with upper and lower case letters, a number, and a special character."
+                accessibilityHint={fieldErrors.password || 'Use at least 10 characters with upper and lower case letters, a number, and a special character.'}
+                accessibilityState={{ invalid: !!fieldErrors.password }}
                 autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                 onBlur={() => onBlurField('password', 'Password', password)}
                 onChangeText={onPasswordChange}
@@ -166,8 +172,10 @@ export default function AuthScreen({
             disabled
             style={[styles.googleButton, { backgroundColor: theme.colors.disabled, borderColor: theme.colors.outlineVariant }]}
           >
-            <Image
-              accessibilityIgnoresInvertColors
+            <CachedImage
+              accessible={false}
+              cachePolicy="memory-disk"
+              contentFit="contain"
               source={{ uri: GOOGLE_ICON_URI }}
               style={styles.googleIcon}
             />
@@ -215,14 +223,14 @@ function useStyles(theme) {
         passwordContainer: {
           flexDirection: 'row',
           alignItems: 'center',
-          height: theme.metrics.touchTarget,
+          minHeight: theme.metrics.touchTarget,
           paddingRight: theme.spacing.extraSmall,
           paddingVertical: theme.spacing.none,
         },
         passwordInput: {
           flex: 1,
           color: theme.colors.onSurface,
-          height: theme.metrics.touchTarget,
+          minHeight: theme.metrics.touchTarget,
           paddingVertical: theme.spacing.medium,
           ...theme.typography.bodyLarge,
         },

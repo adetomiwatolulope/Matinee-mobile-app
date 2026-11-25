@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useMemo } from 'react';
+import { useColorScheme } from 'react-native';
 import { createTheme } from './theme';
 
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
-  const colorScheme = 'light';
+  const systemColorScheme = useColorScheme();
+  const colorScheme = systemColorScheme ?? 'light';
   const theme = useMemo(() => createTheme(colorScheme), [colorScheme]);
   const value = useMemo(() => ({ theme, colorScheme }), [theme, colorScheme]);
 

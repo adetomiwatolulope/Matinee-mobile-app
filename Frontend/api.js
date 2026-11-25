@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { reportAppError } from './errorTracking';
 
 const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_PORT = 3001;
@@ -58,19 +59,32 @@ function resolveApiBase() {
 }
 
 const API_BASE = resolveApiBase();
+let primaryReadUntil = 0;
+
+function shouldPinPrimaryRead() {
+  return Date.now() < primaryReadUntil;
+}
+
+function rememberPrimaryRead(response) {
+  if (String(response.headers.get('X-Matinee-Read-Consistency') || '').toLowerCase() !== 'primary') return;
+  const ttlSeconds = Number(response.headers.get('X-Matinee-Primary-Read-Ttl-Seconds') || 30);
+  primaryReadUntil = Date.now() + (Number.isFinite(ttlSeconds) ? Math.max(0, ttlSeconds) : 30) * 1000;
+}
 
 export async function api(path, { token, headers, ...options } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const requestHeaders = {
+    'Content-Type': 'application/json',
+    ...(shouldPinPrimaryRead() ? { 'X-Matinee-Read-Consistency': 'primary' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(headers || {}),
+  };
   let res;
 
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(headers || {}),
-      },
+      headers: requestHeaders,
       signal: controller.signal,
       ...options,
     });
@@ -88,10 +102,14 @@ export async function api(path, { token, headers, ...options } = {}) {
   }
 
   const data = await res.json().catch(() => ({}));
+  rememberPrimaryRead(res);
   if (!res.ok) {
+    const requestId = res.headers.get('X-Request-Id');
     const err = new Error(data.error || 'Request failed');
     err.data = data;
     err.status = res.status;
+    err.requestId = requestId;
+    reportAppError('api_request_failed', { path, status: res.status, requestId });
     throw err;
   }
   return data;

@@ -14,16 +14,16 @@ export default function OnboardingScreen({ slides, step, pendingVerificationEmai
     <Screen>
       <View style={styles.content}>
         <View style={styles.hero}>
-          <View style={[styles.heroMark, { backgroundColor: theme.colors.primaryContainer }]}>
+          <View style={[styles.heroMark, { backgroundColor: theme.colors.primary }]}>
             <Image
               accessible
               accessibilityLabel="Matinee logo"
               contentFit="contain"
               source={require('../assets/android-icon-foreground.png')}
-              style={[styles.heroLogo, { tintColor: theme.colors.primary }]}
+              style={[styles.heroLogo, { tintColor: theme.colors.onPrimary }]}
             />
           </View>
-          <Text style={[theme.typography.labelMedium, { color: theme.colors.primary }]}>MATINEE</Text>
+          <Text style={[theme.typography.labelMedium, { color: theme.colors.onSurfaceVariant }]}>MATINEE</Text>
         </View>
 
         <BrandHeader title={slide.title} subtitle={slide.body} showBrand={false} />

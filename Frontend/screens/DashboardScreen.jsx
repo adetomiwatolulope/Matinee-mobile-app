@@ -1,16 +1,18 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { BrandHeader, Card, PrimaryButton, Screen } from '../components/ui';
 
-export default function DashboardScreen({ user, onOpenDiscovery, onLogout }) {
+export default function DashboardScreen({ user, onOpenDiscovery, onOpenPayments, onOpenAbout, onOpenGallery, onLogout }) {
   const { theme } = useTheme();
   const styles = useStyles(theme);
 
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <BrandHeader title={`Hello, ${user.name}`} subtitle="What would you like to watch?" />
+        <Pressable onLongPress={onOpenGallery} style={styles.headerGesture}>
+          <BrandHeader title={`Hello, ${user.name}`} subtitle="What would you like to watch?" />
+        </Pressable>
 
         <Card style={styles.card}>
           <Text style={[theme.typography.titleLarge, { color: theme.colors.onSurface }]}>Discover films</Text>
@@ -18,6 +20,14 @@ export default function DashboardScreen({ user, onOpenDiscovery, onLogout }) {
             Browse films currently showing and look up details.
           </Text>
           <PrimaryButton label="Open discovery" onPress={onOpenDiscovery} />
+        </Card>
+
+        <Card style={styles.card}>
+          <Text style={[theme.typography.titleLarge, { color: theme.colors.onSurface }]}>Checkout & payments</Text>
+          <Text style={[theme.typography.bodyMedium, { color: theme.colors.onSurfaceVariant }]}>
+            Review the server-authorised checkout and payment status flow.
+          </Text>
+          <PrimaryButton label="Open payments" onPress={onOpenPayments} variant="secondary" />
         </Card>
 
         <Card style={styles.card}>
@@ -29,6 +39,7 @@ export default function DashboardScreen({ user, onOpenDiscovery, onLogout }) {
             value={user.emailVerified ? 'Verified' : 'Not verified'}
             tone={user.emailVerified ? 'success' : 'error'}
           />
+          <PrimaryButton label="About & credits" onPress={onOpenAbout} variant="secondary" />
           <PrimaryButton label="Logout" onPress={onLogout} variant="secondary" />
         </Card>
       </ScrollView>
@@ -38,7 +49,7 @@ export default function DashboardScreen({ user, onOpenDiscovery, onLogout }) {
 
 function InfoRow({ label, value, tone }) {
   const { theme } = useTheme();
-  const color = tone === 'success' ? theme.colors.success : tone === 'error' ? theme.colors.error : theme.colors.onSurface;
+  const color = theme.colors.onSurfaceVariant;
   return (
     <View style={{ rowGap: theme.spacing.extraExtraSmall }}>
       <Text style={[theme.typography.labelMedium, { color: theme.colors.onSurfaceVariant }]}>{label}</Text>
@@ -56,6 +67,9 @@ function useStyles(theme) {
           padding: theme.spacing.large,
           paddingBottom: theme.spacing.extraLarge,
           rowGap: theme.spacing.large,
+        },
+        headerGesture: {
+          alignItems: 'center',
         },
         card: {
           rowGap: theme.spacing.medium,

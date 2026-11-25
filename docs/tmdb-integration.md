@@ -2,9 +2,7 @@
 
 ## Status
 
-The backend integration is implemented but disabled by default. It cannot be enabled until Product/Legal close PRD blocker D-02 and the operator sets both `TMDB_ENABLED=true` and `TMDB_COMMERCIAL_USE_APPROVED=true` with a valid `TMDB_API_KEY`.
-
-No TMDB API key was obtained as part of this change. Apply for a key in your TMDB account settings.
+The backend integration is implemented. A developer key has been obtained and `TMDB_ENABLED=true` is set for local testing with `TMDB_LOCAL_TESTING_ONLY=true`. Production use remains blocked until Product/Legal close PRD blocker D-02 and `TMDB_COMMERCIAL_USE_APPROVED=true` is set under a written TMDB commercial agreement.
 
 ## Official requirements
 
@@ -20,7 +18,7 @@ Required attribution:
 
 > This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-The notice must be prominent, the approved TMDB logo must identify use of the API, the logo must be less prominent than the Matinee mark, attribution must live in the app's About/Credits section, and links should point to <https://www.themoviedb.org>. The API responses include the notice and link so a future discovery UI can render it.
+The notice is rendered in the discovery and detail footers and in the mobile app's About & credits screen. That screen also shows the official TMDB logo (smaller than the Matinee mark) and links to <https://www.themoviedb.org>. API responses include the notice and link for client rendering.
 
 ## Backend boundary
 

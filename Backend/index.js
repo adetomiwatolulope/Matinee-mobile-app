@@ -3,8 +3,17 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
-const { assertStartupConfig, getTmdbConfig, getTokenSecret } = require('./config');
-const { disconnectPrisma, prisma } = require('./prismaClient');
+const { assertStartupConfig, getDatabasePoolConfig, getTmdbConfig, getTokenSecret } = require('./config');
+const { disconnectPrisma, isPrimaryReadRequested, prisma, readClientFor } = require('./prismaClient');
+const { markPrimaryRead } = require('./databaseRouting');
+const {
+  installProcessErrorTracking,
+  logger,
+  requestErrorHandler,
+  requestFinishLogger,
+  requestIdMiddleware,
+} = require('./logging');
+const { startSystemJobWorker } = require('./systemJobs');
 const { enqueueVerificationEmailJob, kickEmailWorker, startEmailJobWorker } = require('./emailJobs');
 const { registerCustomer } = require('./registrationService');
 const { clearVerificationState, verifyEmailCode } = require('./verificationService');
@@ -14,8 +23,15 @@ const { createMovieRateLimiter } = require('./movieRateLimiter');
 
 const app = express();
 
+installProcessErrorTracking();
+app.use(requestIdMiddleware);
 app.use(cors());
 app.use(express.json());
+app.use(requestFinishLogger);
+app.use((req, _res, next) => {
+  req.readConsistency = isPrimaryReadRequested(req) ? 'primary' : 'eventual';
+  next();
+});
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
@@ -120,11 +136,14 @@ app.post('/auth/register', async (req, res) => {
       idempotencyKey: idempotencyKey.data,
       ...parsed.data,
     });
-    if (result.status >= 200 && result.status < 300) kickEmailWorker(prisma);
+    if (result.status >= 200 && result.status < 300) {
+      markPrimaryRead(res, getDatabasePoolConfig().primaryReadTtlSeconds);
+      kickEmailWorker(prisma);
+    }
     return res.status(result.status).json(result.body);
   } catch (error) {
-    console.error('Registration error', error && error.message ? error.message : error);
-    return res.status(500).json({ error: 'internal error' });
+    logger.error('registration_failed', { message: error && error.message ? error.message : error });
+    return res.status(500).json({ error: 'internal error', requestId: req.requestId });
   }
 });
 
@@ -151,10 +170,11 @@ app.post('/auth/verify-code', async (req, res) => {
       });
     }
 
+    markPrimaryRead(res, getDatabasePoolConfig().primaryReadTtlSeconds);
     return res.json({ token: signToken(result.user), user: result.user });
   } catch (error) {
-    console.error('Verification error', error && error.message ? error.message : error);
-    return res.status(500).json({ error: 'internal error' });
+    logger.error('verification_failed', { message: error && error.message ? error.message : error });
+    return res.status(500).json({ error: 'internal error', requestId: req.requestId });
   }
 });
 
@@ -164,18 +184,19 @@ app.post('/auth/resend-verification', async (req, res) => {
     if (!parsed.ok) return parsed.response;
     const { email } = parsed.data;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await readClientFor(req).user.findUnique({ where: { email } });
     if (user && !user.emailVerified) {
       await prisma.$transaction(async (tx) => {
         await clearVerificationState(tx, user.id);
         await enqueueVerificationEmailJob(tx, user.id);
       });
+      markPrimaryRead(res, getDatabasePoolConfig().primaryReadTtlSeconds);
       kickEmailWorker(prisma);
     }
     return res.json({ message: 'If the account is unverified, a new code will be sent to the email' });
   } catch (error) {
-    console.error('Resend verification error', error && error.message ? error.message : error);
-    return res.status(500).json({ error: 'internal error' });
+    logger.error('resend_verification_failed', { message: error && error.message ? error.message : error });
+    return res.status(500).json({ error: 'internal error', requestId: req.requestId });
   }
 });
 
@@ -185,7 +206,7 @@ app.post('/auth/login', async (req, res) => {
     if (!parsed.ok) return parsed.response;
     const { email, password } = parsed.data;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await readClientFor(req).user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ error: 'invalid credentials' });
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'invalid credentials' });
@@ -194,14 +215,14 @@ app.post('/auth/login', async (req, res) => {
     }
     return res.json({ token: signToken(user), user: publicUser(user) });
   } catch (error) {
-    console.error('Login error', error && error.message ? error.message : error);
-    return res.status(500).json({ error: 'internal error' });
+    logger.error('login_failed', { message: error && error.message ? error.message : error });
+    return res.status(500).json({ error: 'internal error', requestId: req.requestId });
   }
 });
 
 app.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
+    const user = await readClientFor(req).user.findUnique({
       where: { id: req.user.sub },
       select: { id: true, name: true, email: true, emailVerified: true, createdAt: true },
     });
@@ -209,8 +230,8 @@ app.get('/me', authMiddleware, async (req, res) => {
     if (!user.emailVerified) return res.status(403).json({ error: 'Email not verified', requiresVerification: true });
     return res.json({ user });
   } catch (error) {
-    console.error('Session lookup error', error && error.message ? error.message : error);
-    return res.status(500).json({ error: 'internal error' });
+    logger.error('session_lookup_failed', { message: error && error.message ? error.message : error });
+    return res.status(500).json({ error: 'internal error', requestId: req.requestId });
   }
 });
 
@@ -233,12 +254,12 @@ function sendMovieResult(res, service, result) {
   return res.json({ ...result.data, attribution: service.attribution(), meta: result.meta });
 }
 
-function handleMovieError(res, error) {
+function handleMovieError(req, res, error) {
   if (error instanceof TmdbAdapterError && error.status === 429 && error.retryAfterMs !== null) {
     res.set('Retry-After', String(Math.max(1, Math.ceil(error.retryAfterMs / 1000))));
   }
-  console.error('Movie catalog error', error && error.message ? error.message : error);
-  return res.status(503).json({ error: 'Movie catalog temporarily unavailable' });
+  logger.error('movie_catalog_failed', { message: error && error.message ? error.message : error });
+  return res.status(503).json({ error: 'Movie catalog temporarily unavailable', requestId: req.requestId });
 }
 
 async function handleMovieRequest(req, res, { schema, input, call }) {
@@ -255,7 +276,7 @@ async function handleMovieRequest(req, res, { schema, input, call }) {
     const result = await call(service, parsed.data);
     return sendMovieResult(res, service, result);
   } catch (error) {
-    return handleMovieError(res, error);
+    return handleMovieError(req, res, error);
   }
 }
 
@@ -277,14 +298,17 @@ app.get('/movies/:id', authMiddleware, (req, res) => handleMovieRequest(req, res
   call: (service, data) => service.getMovieDetails(data.id),
 }));
 
+app.use(requestErrorHandler);
+
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 const host = process.env.HOST || '0.0.0.0';
 
 assertStartupConfig();
 startEmailJobWorker(prisma);
+startSystemJobWorker(prisma);
 
 const server = app.listen(port, host, () => {
-  console.log(`Server listening on http://${host}:${port}`);
+  logger.info('server_started', { host, port });
 });
 
 async function shutdown() {

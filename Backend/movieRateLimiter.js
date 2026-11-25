@@ -7,13 +7,16 @@ function createMovieRateLimiter(options = {}) {
   const config = options.config || getMovieRateLimitConfig();
 
   return async function movieRateLimiter(req, res, next) {
-    const subject = req.user && req.user.sub ? req.user.sub : req.ip;
-    const key = `matinee:ratelimit:movies:${subject}`;
+    const keys = [`matinee:ratelimit:movies:ip:${req.ip || 'unknown'}`];
+    if (req.user && req.user.sub) keys.push(`matinee:ratelimit:movies:user:${req.user.sub}`);
+
     try {
-      const current = await cache.incrementWithExpiry(key, config.windowSeconds);
-      if (current > config.maxRequests) {
-        res.set('Retry-After', String(config.windowSeconds));
-        return res.status(429).json({ error: 'Too many movie catalog requests' });
+      for (const key of keys) {
+        const current = await cache.incrementWithExpiry(key, config.windowSeconds);
+        if (current > config.maxRequests) {
+          res.set('Retry-After', String(config.windowSeconds));
+          return res.status(429).json({ error: 'Too many movie catalog requests' });
+        }
       }
       return next();
     } catch (_error) {

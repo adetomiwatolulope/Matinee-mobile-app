@@ -62,6 +62,8 @@ export default function VerifyScreen({
                   inputs.current[index] = node;
                 }}
                 accessibilityLabel={`Verification digit ${index + 1}`}
+                accessibilityHint={`Digit ${index + 1} of ${theme.metrics.codeLength}`}
+                accessibilityState={{ invalid: !!error }}
                 autoComplete="one-time-code"
                 keyboardType="number-pad"
                 maxLength={theme.metrics.singleCharacter}
@@ -112,7 +114,7 @@ function useStyles(theme) {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          columnGap: theme.spacing.extraSmall,
+          columnGap: theme.spacing.extraExtraSmall,
         },
         codeInput: {
           alignItems: 'center',
